@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<launch>
+
+  <node pkg="tf2_ros" type="static_transform_publisher" name="T_z_d" args="-0.138 -0.005 1.286 0 0 1 0 Fz Fd" />
+
+  <node pkg="tf2_ros" type="static_transform_publisher" name="T_d_pt" args="0 0 0 0 0.1667 0 0.986 Fd Fpt" />
+  <!-- <node pkg="tf2_ros" type="static_transform_publisher" name="T_d_pt" args="0 0 0 0.0704 0.1511 -0.4166 0.8936 Fd Fpt" /> -->
+  <!-- <node pkg="tf2_ros" type="static_transform_publisher" name="T_d_pt" args="0 0 0 -0.0704 0.1511 0.4166 0.8936 Fd Fpt" /> -->
+
+  <node pkg="tf2_ros" type="static_transform_publisher" name="T_pt_pc" args="0.01 0.25 0.054 0.5 -0.5 0.5 -0.5 Fpt Fpc" />
+  <node pkg="tf2_ros" type="static_transform_publisher" name="T_pc_pr" args="0.5 0 0 0 0 0 1 Fpc Fpr" />
+
+
+
+  <node pkg="tf2_ros" type="static_transform_publisher" name="T_z_g" args="0.221 -0.052 1.503 0 0 0 1 Fz Fg" />
+
+
+  <node pkg="tf2_ros" type="static_transform_publisher" name="T_z_v" args="-0.403 -0.018 0.717 -0.156 0 0.988 0 Fz Fv" />
+  <node pkg="tf2_ros" type="static_transform_publisher" name="T_z_s" args="-0.406 -0.018 0.627 0.572 0.572 -0.416 -0.416 Fz Fs" />
+
+  <node pkg="tf2_ros" type="static_transform_publisher" name="T_z_lc" args="-0.382 -0.078 0.557 0.572 0.572 -0.416 -0.416 Fz Flc" />
+  <node pkg="tf2_ros" type="static_transform_publisher" name="T_lc_lr" args="0.120 0 0 0 0 0 1 Flc Flr" />
+
+  <node pkg="rviz" type="rviz" name="rviz" args="-d /home/plusk01/Dropbox/MIT/acl/boeing/globalreloc/katwijk/default.rviz" />
+
+</launch>
