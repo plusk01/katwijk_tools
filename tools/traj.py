@@ -29,8 +29,10 @@ import cv_bridge
 import sys; sys.path.append('..')
 import katwijk
 
+
+
 def plot_ground_truth(dataset):
-    neh = np.array(list(dataset.gpsutm))[:,2:5]
+    enu = np.array(list(dataset.gpsutm))[:,2:5]
     srocks = dataset.rocks[np.where(dataset.rocks[:,0]==0)]
     mrocks = dataset.rocks[np.where(dataset.rocks[:,0]==1)]
     lrocks = dataset.rocks[np.where(dataset.rocks[:,0]==2)]
@@ -41,7 +43,7 @@ def plot_ground_truth(dataset):
 
     fig, ax = plt.subplots()
 
-    ax.scatter(neh[:,0], neh[:,1])
+    ax.scatter(enu[:,0], enu[:,1])
     ax.scatter(srocks[:,1], srocks[:,2], 40, color=COLORS[0], marker='x')
     ax.scatter(mrocks[:,1], mrocks[:,2], 40, color=COLORS[1], marker='x')
     ax.scatter(lrocks[:,1], lrocks[:,2], 40, color=COLORS[2], marker='x')
@@ -86,40 +88,39 @@ if __name__ == '__main__':
 
     # plot_ground_truth(dataset)
 
-    processor = katwijk.rocks.StereoProcessor(dataset, args.cam, maxdepth=20)
+    # dataset._gpstraj.plot_samples(dataset.loccam_timestamps)
+
+    T = dataset.get_ground_truth_at(dataset.loccam_timestamps)
+    print(T)
+
+    fig = plt.figure()
+    # ax = fig.add_subplot(projection='3d')
+    ax = fig.add_subplot()
+    ax.plot(T[:,0,3], T[:,1,3]) #, T[:,2,3])
+
+    # axis_length = 0.5
+    # for pose in T[::20,:,:]:
+    #     origin = pose[:3,3]
+
+    #     x_axis = origin + pose[:3, 0] * axis_length
+    #     line = np.append(origin[np.newaxis], x_axis[np.newaxis], axis=0)
+    #     ax.plot(line[:, 0], line[:, 1], line[:, 2], 'r-')
+
+    #     y_axis = origin + pose[:3, 1] * axis_length
+    #     line = np.append(origin[np.newaxis], y_axis[np.newaxis], axis=0)
+    #     ax.plot(line[:, 0], line[:, 1], line[:, 2], 'g-')
+
+    #     z_axis = origin + pose[:3, 2] * axis_length
+    #     line = np.append(origin[np.newaxis], z_axis[np.newaxis], axis=0)
+    #     ax.plot(line[:, 0], line[:, 1], line[:, 2], 'b-')
+
+    ax.set_xlabel('X')
+    ax.set_ylabel('Y')
+    # ax.set_zlabel('Z')
 
 
-    idataset = katwijk.dataset.Iterable(dataset)
-    for t, key, data in idataset:
-        print(t, key)
 
-        if key == 'LocCam':
-            _, img0, img1 = next(data)
+    ax.axis('equal')
+    ax.grid(alpha=0.3)
 
-            cv.imshow('img', img0)
-            cv.waitKey(1)
-            # import ipdb; ipdb.set_trace()
-
-        if key == 'LocCamOdomGT':
-            print(data)
-
-    # processor.classify_rocks(record_debug=True, visualize_img=True, visualize_pcd=False)
-
-    # rocks, debugimg = processor.process(t, img0, img1, generate_debug_img=True, visualize_img=True, visualize_pcd=False)
-
-
-    # recorder = katwijk.ros.BagRecorder(dataset, args.out_bag)
-
-    # processor.record_to_bag()
-
-    # recorder.record_imu()
-    # recorder.record_gpsutm()
-    # if args.cam == 'PanCam':
-    #     recorder.record_pancam()
-    #     ts = dataset.pancam_timestamps
-    # elif args.cam == 'LocCam':
-    #     recorder.record_loccam()
-    #     ts = dataset.loccam_timestamps
-    # recorder.record_groundtruth_odom(ts)
-
-    # recorder.close()
+    plt.show()
