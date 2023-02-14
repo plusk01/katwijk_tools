@@ -310,7 +310,7 @@ class KatwijkDataset:
 
         Returns
         -------
-
+        T_pc : (4,4) np.array -- pose of the child w.r.t parent
         """
         # initial position of the GPS w.r.t the GPS-UTM map
         T_map_g0 = self.get_T_map_g0()

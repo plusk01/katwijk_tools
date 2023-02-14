@@ -97,29 +97,25 @@ class BagRecorder:
             msg.pose.orientation.w = 1
             self.bag.write(self._ensure_valid(topic), msg, rostime)
 
-    def record_groundtruth_odom(self, ts, topic='odom_gt'):
+    def record_gt_odom(self, topic='odom_gt', cam='LocCam', as_path=False):
+        ts = self.dataset._get_stereo_timestamps(cam)
+        Ts = self.dataset.get_ground_truth_at(ts, parent='imu_odom', child='LocCam0')
 
-        xy, θ, v = self.dataset.get_ground_truth_at(ts)
+        pathmsg = nav_msgs.Path()
 
-        for data in tqdm(np.c_[ts, xy, θ, v], desc=topic):
-            t, x, y, th, vx, vy = data
+        for t, T in tqdm(zip(ts, Ts), desc=topic):
             rostime = rospy.Time.from_sec(t)
 
-            q = Rot.from_rotvec(th * np.array((0,0,1))).as_quat()
+            if as_path:
+                posemsg = build_pose_msg(t, T, parent='odom')
 
-            msg = navigation_msgs.Odometry()
-            msg.header.frame_id = 'world'
-            msg.header.stamp = rostime
-            msg.child_frame_id = 'camera'
-            msg.pose.pose.position.x = x
-            msg.pose.pose.position.y = y
-            msg.pose.pose.position.z = 0
-            msg.pose.pose.orientation.x = q[0]
-            msg.pose.pose.orientation.y = q[1]
-            msg.pose.pose.orientation.z = q[2]
-            msg.pose.pose.orientation.w = q[3]
-            msg.twist.twist.linear.x = np.linalg.norm([vx, vy])
-            self.bag.write(self._ensure_valid(topic), msg, rostime)
+                pathmsg.header.stamp = rostime
+                pathmsg.header.frame_id = 'odom'
+                pathmsg.poses.append(posemsg)
+                self.bag.write(self._ensure_valid('path'), pathmsg, rostime)
+            else:
+                msg = build_odom_msg(t, T, parent='odom', child='LocCam')
+                self.bag.write(self._ensure_valid(topic), msg, rostime)
 
     def record_velodyne(self, topic='velodyne'):
         pass
@@ -221,21 +217,32 @@ def publish_tf(dataset, t, T, parent='odom', child='LocCam'):
 
     _tf2.sendTransform(msg)
 
-def build_odom_msg(t, T, parent='odom', child='LocCam'):
+def build_pose_msg(t, T, parent='odom'):
     q = Rot.from_matrix(T[:3,:3]).as_quat()
+
+    msg = geometry_msgs.PoseStamped()
+    msg.header.stamp = rospy.Time.from_sec(t)
+    msg.header.frame_id = parent
+
+    msg.pose.position.x = T[0,3]
+    msg.pose.position.y = T[1,3]
+    msg.pose.position.z = T[2,3]
+    msg.pose.orientation.x = q[0]
+    msg.pose.orientation.y = q[1]
+    msg.pose.orientation.z = q[2]
+    msg.pose.orientation.w = q[3]
+
+    return msg
+
+def build_odom_msg(t, T, parent='odom', child='LocCam'):
 
     msg = nav_msgs.Odometry()
     msg.header.stamp = rospy.Time.from_sec(t)
     msg.header.frame_id = parent
     msg.child_frame_id = child
 
-    msg.pose.pose.position.x = T[0,3]
-    msg.pose.pose.position.y = T[1,3]
-    msg.pose.pose.position.z = T[2,3]
-    msg.pose.pose.orientation.x = q[0]
-    msg.pose.pose.orientation.y = q[1]
-    msg.pose.pose.orientation.z = q[2]
-    msg.pose.pose.orientation.w = q[3]
+    posemsg = build_pose_msg(t, T, parent)
+    msg.pose.pose = posemsg.pose
 
     return msg
 
