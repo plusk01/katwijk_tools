@@ -25,6 +25,9 @@ import rospy
 import rosbag
 import cv_bridge
 
+import sensor_msgs.msg as sensor_msgs
+import std_msgs.msg as std_msgs
+import sensor_msgs.point_cloud2 as pc2
 
 import sys; sys.path.append('..')
 import katwijk
@@ -126,8 +129,12 @@ class KatwijkRockProcessor:
             Fg = o3d.geometry.TriangleMesh.create_coordinate_frame().transform(np.linalg.inv(T_gc0))
             o3d.visualization.draw_geometries([Fc0, Fc1, Fg, pcd])
 
-        plane_model, plane_pts_idx = pcd.segment_plane(distance_threshold=ransac_distthr, ransac_n=3, num_iterations=1000)
-        n = plane_model[:3].reshape((3,1))
+        try:
+            plane_model, plane_pts_idx = pcd.segment_plane(distance_threshold=ransac_distthr, ransac_n=3, num_iterations=1000)
+            n = plane_model[:3].reshape((3,1))
+        except:
+            return None, None, None
+
 
         pcd.transform(T_gc0)
 
@@ -142,8 +149,12 @@ class KatwijkRockProcessor:
         maxb[2] = 0
         bbox.max_bound = maxb
 
-        pcd_ground = pcd.select_by_index(plane_pts_idx)
-        pcd_nonground = pcd.select_by_index(plane_pts_idx, invert=True).crop(bbox)
+        try:
+            pcd_ground = pcd.select_by_index(plane_pts_idx)
+            pcd_nonground = pcd.select_by_index(plane_pts_idx, invert=True).crop(bbox)
+        except:
+            pcd_ground = pcd
+            pcd_nonground = pcd
 
         return pcd_ground, pcd_nonground, T_gc0
 
@@ -203,11 +214,18 @@ class KatwijkRockProcessor:
             yield t_s, pcd, img0, img1
 
     def classify_rocks(self, record_debug=False, visualize_img=False, visualize_pcd=False):
+        iter = 0
         for t_s, pcd, img0, img1 in tqdm(self.point_cloud_from_stereo, desc="Classifying Rocks"):
+            bb_txt = open(str(self.dataset.datadir) + '/BoundingBoxes/' + str(iter).zfill(4) + '.txt', 'w')
+            iter += 1
+            bb_txt_lines = []
 
             img0orig = img0.copy()
 
             pcd_ground, pcd_nonground, T_gc0 = self._rotate_and_separate(pcd, t_s, voxel_size=0.01)
+            if pcd_ground==None:
+                continue
+            
 
             labels = np.array(pcd_nonground.cluster_dbscan(eps=0.3, min_points=100, print_progress=False))
             print(f"Found {labels.max()+1} clusters")
@@ -239,17 +257,36 @@ class KatwijkRockProcessor:
 
                     # Get points, transformed back into cam0
                     subpcd.transform(np.linalg.inv(T_gc0))
+                    print("Inverse of T_gc0: \n", np.linalg.inv(T_gc0))
                     xyz = np.asarray(subpcd.points)
 
                     # Project points into image
-                    pix, _ = cv.projectPoints(xyz, (0,0,0), (0,0,0), K0, D0)
+                    pix, _ = cv.projectPoints(xyz, (0,0,0), (0,0,0), K0, D0) # objectPoints, rvec, tvec, cameraMatrix
                     pix = pix.squeeze()
+                    # print(f"Pix size: {pix.shape}") # pix is rows of points
+                    
+                    # make txt file with bounding boxes
+                    # self.dataset.datadir + '/BoundingBoxes/'
+                    # probability, xmin, ymin, xmax, ymax, id, class
+                    bb_txt_lines.extend(["1.0", " ", str(round(min(pix[:,0]))), " ", str(round(max(pix[:,0]))), " ", str(round(min(pix[:,1]))), " ", str(round(max(pix[:,1]))), " ", str(l), " ", str(size), "\n"])
 
                     C = tuple(map(lambda x: int(x*255), clr))[::-1]
                     for p in pix:
                         cv.circle(img0, (int(p[0]), int(p[1])), 5, C, -1)
 
                     np.asarray(pcd_nonground.colors)[np.argwhere(labels == l).flatten()] = colors
+
+            bb_txt.writelines(bb_txt_lines)
+
+
+
+            # put point clouds in rosbag
+            rostime = rospy.Time.from_sec(t_s)
+            # print(f"type of nonground ptcloud: {type(pcd_nonground)}")
+            pc2_msg = convertCloudFromOpen3dToRos(pcd_nonground, rostime)
+            self.recorder.bag.write('/robot1/map_points', pc2_msg, rostime)
+
+
 
             if visualize_img:
 
@@ -277,6 +314,28 @@ class KatwijkRockProcessor:
     def record_to_bag(self):
         pass
 
+
+# Convert the datatype of point cloud from Open3D to ROS PointCloud2 (XYZRGB only)
+def convertCloudFromOpen3dToRos(open3d_cloud, rostime, frame_id="camera_left"):
+    # Set "header"
+    header = std_msgs.Header()
+    header.stamp = rostime
+    header.frame_id = frame_id
+
+    FIELDS_XYZ = [
+        sensor_msgs.PointField(name='x', offset=0, datatype=sensor_msgs.PointField.FLOAT32, count=1),
+        sensor_msgs.PointField(name='y', offset=4, datatype=sensor_msgs.PointField.FLOAT32, count=1),
+        sensor_msgs.PointField(name='z', offset=8, datatype=sensor_msgs.PointField.FLOAT32, count=1),
+    ]
+    FIELDS_XYZRGB = FIELDS_XYZ + \
+        [sensor_msgs.PointField(name='rgb', offset=12, datatype=sensor_msgs.PointField.UINT32, count=1)]
+    BIT_MOVE_16 = 2**16
+    BIT_MOVE_8 = 2**8
+
+    points=np.asarray(open3d_cloud.points)
+
+    # create ros_cloud
+    return pc2.create_cloud(header, FIELDS_XYZ, points)
 
 def plot_ground_truth(dataset):
     neh = np.array(list(dataset.gpsutm))[:,2:5]
@@ -337,6 +396,7 @@ if __name__ == '__main__':
 
 
     recorder = katwijk.ros.BagRecorder(dataset, args.out_bag)
+    # recorder.record_loccam()
 
     processor = KatwijkRockProcessor(dataset, recorder, args.cam, maxdepth=20)
     processor.classify_rocks(record_debug=True, visualize_img=True, visualize_pcd=False)
